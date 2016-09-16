@@ -1,0 +1,130 @@
+#!/bin/bash
+
+# TODO:
+#   * Parse options with `getopt`
+#   * Before/after directories
+
+root_path=$TIY_NOTES_ROOT
+week=$1
+topic=$2
+name=$3
+msg=$4
+rs=false
+
+function line () {
+    echo $'\e[2m''---------'$'\e[0m'
+}
+
+function start () {
+    if [ -z "$week" ]; then
+        prompt_week
+    fi
+    if [ -z "$topic" ]; then
+        prompt_topic
+    fi
+    if [ -z "$name" ]; then
+        prompt_name
+    fi
+    if [ -z "$msg" ]; then
+        prompt_message
+    fi
+    prompt_remove_source_files
+    export_files
+    tput sgr0
+}
+
+function prompt_week () {
+    while true; do
+        read -p $'\e[1m'"Enter the current cohort week: "$'\e[0m' week
+        case $week in
+            [0-9][0-9]|[0-9] ) break;;
+            *                   ) echo "Please enter a number.";;
+        esac
+    done
+    line
+}
+
+function prompt_topic () {
+    echo $'\e[1m'"Select the topic of the notes:"$'\e[0m'
+    select topic in general html css js backbone react angular ember other
+    do
+        case $topic in
+            other ) prompt_topic_other; break;;
+            * ) break;;
+        esac
+    done
+    line
+}
+
+function prompt_topic_other () {
+    read -p "Enter the topic of the notes: " topic
+    line
+}
+
+function prompt_remove_source_files () {
+    while true; do
+        read -p $'\e[1m'"Remove source files? (Y/n): "$'\e[0m' rs_input
+        case $rs_input in
+            [Yy] ) rs=true; break;;
+            [Nn] ) break;;
+        esac
+    done
+    line
+}
+
+function prompt_name () {
+    read -p "Enter a name for the notes: " name
+    line
+}
+
+function prompt_message () {
+    read -p "Enter a description for the notes: " msg
+    line
+}
+
+function export_files () {
+    local full_msg
+    local write_msg
+    local week_path="$root_path/week-$week"
+    local full_path="$week_path/$topic"
+
+    if [ ! -z "$name" ]; then
+        write_msg=true
+        full_path+="/$name"
+        full_msg+="* <a href=\"$topic/$name\">$name</a>"
+    fi
+
+    if [ ! -z "$msg" ]; then
+        write_msg=true
+        full_msg+=" - $msg"
+    fi
+
+    echo -e $'\e[0m'"Exporting notes to "$'\e[1m'"$full_path"
+    mkdir -p $full_path
+
+    local cmd=""
+
+    if [ -d .git ]; then
+        cmd+="ls -a | grep -f <(git ls-files | sed 's/\/.*//g' | sort | uniq)"
+    else
+        cmd+="find . -maxdepth 1"
+    fi
+
+    cmd+="| xargs -I {} rsync -ar"
+
+    if [ $rs = true ]; then
+        cmd+=" --remove-source-files"
+    fi
+
+    cmd+=" {} $full_path"
+
+    eval $cmd
+
+    if [ "$write_msg" = true ]; then
+        echo "$full_msg" >> "$week_path/README.md"
+    fi
+
+    echo -e $'\e[96m\e[1m'"Done"
+}
+
+start
