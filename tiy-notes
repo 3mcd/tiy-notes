@@ -6,8 +6,8 @@
 
 root_path=$TIY_NOTES_ROOT
 week=$1
-topic=$2
-name=$3
+name=$2
+topic=$3
 msg=$4
 rs=false
 
@@ -18,6 +18,7 @@ function line () {
 function start () {
     if [ -z "$week" ]; then
         prompt_week
+        prompt_day
     fi
     if [ -z "$topic" ]; then
         prompt_topic
@@ -36,24 +37,37 @@ function start () {
 function prompt_week () {
     while true; do
         read -p $'\e[1m'"Enter the current cohort week: "$'\e[0m' week
+        line
         case $week in
             [0-9][0-9]|[0-9] ) break;;
-            *                   ) echo "Please enter a number.";;
+            *                ) echo "Please enter a number.";;
         esac
     done
-    line
+}
+
+function prompt_day () {
+    echo $'\e[1m'"Select the day of the notes:"$'\e[0m'
+    select day in monday tuesday wednesday thursday friday "exit"
+    do
+        line
+        case $day in
+            exit ) unset day; break;;
+            *    ) break;;
+        esac
+    done
 }
 
 function prompt_topic () {
     echo $'\e[1m'"Select the topic of the notes:"$'\e[0m'
-    select topic in general html css js backbone react angular ember other
+    select topic in html css js backbone react angular ember other "exit"
     do
+        line
         case $topic in
-            other ) prompt_topic_other; break;;
-            * ) break;;
+            other ) prompt_topic_other;;
+            exit  ) unset topic; break;;
+            *     ) break;;
         esac
     done
-    line
 }
 
 function prompt_topic_other () {
@@ -64,12 +78,12 @@ function prompt_topic_other () {
 function prompt_remove_source_files () {
     while true; do
         read -p $'\e[1m'"Remove source files? (Y/n): "$'\e[0m' rs_input
+        line
         case $rs_input in
             [Yy] ) rs=true; break;;
             [Nn] ) break;;
         esac
     done
-    line
 }
 
 function prompt_name () {
@@ -84,20 +98,26 @@ function prompt_message () {
 
 function export_files () {
     local full_msg
-    local write_msg
-    local week_path="$root_path/week-$week"
-    local full_path="$week_path/$topic"
+    local link_path
+    local week_path="$root_path/week-$week/"
+    local full_path="$week_path"
+
+    if [ ! -z "$day" ]; then
+        full_path+="$day/"
+        link_path+="$day/"
+    fi
+
+    if [ ! -z "$topic" ]; then
+        full_path+="$topic/"
+        link_path+="$topic/"
+    fi
 
     if [ ! -z "$name" ]; then
-        write_msg=true
-        full_path+="/$name"
-        full_msg+="* <a href=\"$topic/$name\">$name</a>"
+        full_path+="$name"
+        link_path+="$name"
     fi
 
-    if [ ! -z "$msg" ]; then
-        write_msg=true
-        full_msg+=" - $msg"
-    fi
+    full_msg+="* <a href=\"$link_path\">$msg</a>"
 
     echo -e $'\e[0m'"Exporting notes to "$'\e[1m'"$full_path"
     mkdir -p $full_path
@@ -112,17 +132,28 @@ function export_files () {
 
     cmd+="| xargs -I {} rsync -ar"
 
-    if [ $rs = true ]; then
-        cmd+=" --remove-source-files"
-    fi
+    # if [ $rs = true ]; then
+    #     cmd+=" --remove-source-files"
+    # fi
 
     cmd+=" {} $full_path"
 
     eval $cmd
 
-    if [ "$write_msg" = true ]; then
+    cd "$full_path"
+
+    git add .
+
+    if [ ! -z "$msg" ]; then
         echo "$full_msg" >> "$week_path/README.md"
+        git commit -am "$msg"
+    elif [ -z "$day" ]; then
+        git commit -am "Updated $day notes"
+    else
+        git commit -am "Updated notes"
     fi
+
+    git push origin master
 
     echo -e $'\e[96m\e[1m'"Done"
 }
